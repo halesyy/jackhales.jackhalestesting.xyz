@@ -1,0 +1,51 @@
+services:
+  frontend:
+    image: ghcr.io/halesyy/jackhales-testing-frontend:${IMAGE_TAG:-latest}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://backend:8000/api}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://jackhales.jackhalestesting.xyz}
+    depends_on:
+      - backend
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.jackhales-frontend.rule=Host(`jackhales.jackhalestesting.xyz`)
+      - traefik.http.routers.jackhales-frontend.entrypoints=websecure
+      - traefik.http.routers.jackhales-frontend.tls=true
+      - traefik.http.routers.jackhales-frontend.tls.certresolver=letsencrypt
+      - traefik.http.services.jackhales-frontend.loadbalancer.server.port=3000
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/halesyy/jackhales-testing-backend:${IMAGE_TAG:-latest}
+    env_file:
+      - .env
+    environment:
+      MONGODB_URL: ${MONGODB_URL}
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-jackhales}
+      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS:-182.253.75.243}
+      ADMIN_BOOTSTRAP_IP: ${ADMIN_BOOTSTRAP_IP:-182.253.75.243}
+      SESSION_SECRET: ${SESSION_SECRET}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://jackhales.jackhalestesting.xyz}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.jackhales-backend.rule=Host(`jackhales.jackhalestesting.xyz`) && PathPrefix(`/api`)
+      - traefik.http.routers.jackhales-backend.priority=100
+      - traefik.http.routers.jackhales-backend.entrypoints=websecure
+      - traefik.http.routers.jackhales-backend.tls=true
+      - traefik.http.routers.jackhales-backend.tls.certresolver=letsencrypt
+      - traefik.http.services.jackhales-backend.loadbalancer.server.port=8000
+    networks:
+      - dokploy-network
+      - jackhales-private
+    restart: unless-stopped
+
+networks:
+  dokploy-network:
+    external: true
+  jackhales-private:
+    external: true

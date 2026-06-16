@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules
+.venv
+.next
+out
+dist
+coverage
+__pycache__
+.pytest_cache
+.ruff_cache
+.mypy_cache
+*.pyc
