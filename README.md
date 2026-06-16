@@ -27,12 +27,12 @@ uvicorn app.main:app --reload
 
 ## Deployment
 
-GitHub Actions builds frontend and backend images, pushes them to GHCR, copies `docker-compose.yml` to the target host, and runs:
+GitHub Actions builds frontend and backend images and pushes them to GHCR.
+
+The Sydney host also runs a pull-based systemd deploy timer. It pulls `main` from the public repository and runs:
 
 ```sh
-IMAGE_TAG=<commit-sha> docker compose pull
-IMAGE_TAG=<commit-sha> docker compose up -d --remove-orphans
+IMAGE_TAG=local docker compose up -d --build --remove-orphans
 ```
 
 The remote host owns runtime secrets in `/srv/apps/jackhales-testing/.env`.
-
