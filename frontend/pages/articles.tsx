@@ -1,35 +1,78 @@
+import { ArrowUpRight, BookOpen, Clock3 } from "lucide-react";
 import Head from "next/head";
 import Link from "next/link";
 
+import { Reveal, Stagger, StaggerItem } from "../components/Motion";
 import { SiteShell } from "../components/SiteShell";
 import { formatDate } from "../lib/date";
 import { fetchArticles } from "../lib/api";
 import type { articleSummary } from "../lib/types";
 
-type articlesPageProps = {
-  articles: articleSummary[];
-};
+type articlesPageProps = { articles: articleSummary[] };
 
 export async function getServerSideProps() {
   const articles = await fetchArticles();
   return { props: { articles } };
 }
 
+function articleTheme(title: string): string {
+  const value = title.toLowerCase();
+  if (value.includes("prime") || value.includes("topology")) return "Research";
+  if (value.includes("ai") || value.includes("language") || value.includes("classifier")) return "Applied AI";
+  if (value.includes("property") || value.includes("shopify")) return "Data notes";
+  return "Thinking aloud";
+}
+
 export default function ArticlesPage({ articles }: articlesPageProps) {
+  const [featured, ...rest] = articles;
+
   return (
     <SiteShell>
       <Head>
-        <title>Articles - Jack Hales</title>
+        <title>Writing — Jack Hales</title>
+        <meta name="description" content="Research journals, technical notes and ideas by Australian software engineer Jack Hales." />
       </Head>
-      <div className="space-y-5">
-        {articles.map((article) => (
-          <Link key={article.slug} href={`/article/${article.slug}`} className="block border-b border-neutral-200 pb-5 no-underline hover:border-neutral-950">
-            <div className="text-xs uppercase tracking-wide text-neutral-500">{formatDate(article.publishedAt)}</div>
-            <h1 className="mt-1 text-xl font-semibold leading-snug">{article.title}</h1>
-            <p className="mt-2 text-sm leading-6 text-neutral-700">{article.summary}</p>
+
+      <Reveal className="page-hero page-hero-row">
+        <div>
+          <p className="eyebrow">Writing & research</p>
+          <h1 className="display-title">Notes from the <span className="accent">workbench.</span></h1>
+        </div>
+        <p className="lead page-side-lead">Research journals, technical field notes and unfinished ideas. Written to clarify the thinking, not just present the answer.</p>
+      </Reveal>
+
+      {featured ? (
+        <Reveal>
+          <Link href={`/article/${featured.slug}`} className="featured-article card card-interactive">
+            <div className="featured-art"><span>{articleTheme(featured.title)}</span><BookOpen size={54} /></div>
+            <div className="featured-copy">
+              <div className="article-meta"><span>{articleTheme(featured.title)}</span><span><Clock3 size={13} /> {formatDate(featured.publishedAt)}</span></div>
+              <h2>{featured.title}</h2>
+              <p>{featured.summary}</p>
+              <strong>Read article <ArrowUpRight size={16} /></strong>
+            </div>
           </Link>
-        ))}
-      </div>
+        </Reveal>
+      ) : null}
+
+      <section className="section-block articles-section">
+        <Reveal className="section-heading">
+          <div><p className="eyebrow">The archive</p><h2>More ideas and explorations.</h2></div>
+          <p>{articles.length} entries across software, data, probability and the spaces between them.</p>
+        </Reveal>
+        <Stagger className="articles-grid">
+          {rest.map((article, index) => (
+            <StaggerItem key={article.slug}>
+              <Link href={`/article/${article.slug}`} className={`article-card card card-interactive article-tone-${index % 3}`}>
+                <div className="article-card-top"><span className="tag">{articleTheme(article.title)}</span><ArrowUpRight size={17} /></div>
+                <h2>{article.title}</h2>
+                <p>{article.summary}</p>
+                <time>{formatDate(article.publishedAt)}</time>
+              </Link>
+            </StaggerItem>
+          ))}
+        </Stagger>
+      </section>
     </SiteShell>
   );
 }

@@ -1,11 +1,14 @@
-import { Bold, Code2, Heading1, Italic, Save, Send } from "lucide-react";
+import { Bold, Code2, Heading1, Italic, Link2, List, Quote, RotateCcw, Save, Send } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { articleDetail } from "../lib/types";
+import { MarkdownContent } from "./MarkdownContent";
 
 type articleFormProps = {
   article?: articleDetail;
+  mode: "create" | "edit";
   onSubmit: (article: articlePayload) => Promise<void>;
+  onCancel: () => void;
 };
 
 export type articlePayload = {
@@ -28,16 +31,20 @@ function isoFromInput(value: string): string {
   return new Date(`${value}T00:00:00.000Z`).toISOString();
 }
 
-export function ArticleForm({ article, onSubmit }: articleFormProps) {
+export function ArticleForm({ article, mode, onSubmit, onCancel }: articleFormProps) {
   const [title, setTitle] = useState(article?.title || "");
   const [slug, setSlug] = useState(article?.slug || "");
+  const [automaticSlug, setAutomaticSlug] = useState(mode === "create" || !article?.slug);
   const [summary, setSummary] = useState(article?.summary || "");
   const [bodyMarkdown, setBodyMarkdown] = useState(article?.bodyMarkdown || "");
   const [publishedAt, setPublishedAt] = useState(article?.publishedAt.slice(0, 10) || new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState<"draft" | "published">(article?.status || "draft");
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
 
-  const computedSlug = useMemo(() => slug || slugify(title), [slug, title]);
+  const generatedSlug = useMemo(() => slugify(title), [title]);
+  const computedSlug = automaticSlug ? generatedSlug : slug;
+  const canSubmit = Boolean(title.trim() && computedSlug && publishedAt);
 
   function insertToken(before: string, after = "") {
     const textarea = document.querySelector<HTMLTextAreaElement>("#bodyMarkdown");
@@ -50,76 +57,122 @@ export function ArticleForm({ article, onSubmit }: articleFormProps) {
     requestAnimationFrame(() => textarea.focus());
   }
 
+  function setCustomSlugValue(value: string) {
+    setAutomaticSlug(false);
+    setSlug(slugify(value));
+  }
+
+  function resetSlug() {
+    setSlug("");
+    setAutomaticSlug(true);
+  }
+
   async function submit(nextStatus?: "draft" | "published") {
+    if (!canSubmit) {
+      setFormError("Add a title so the article has a valid slug before saving.");
+      return;
+    }
+
     setSaving(true);
+    setFormError("");
     try {
+      const resolvedStatus = nextStatus || status;
       await onSubmit({
-        title,
+        title: title.trim(),
         slug: computedSlug,
-        summary,
+        summary: summary.trim(),
         bodyMarkdown,
         publishedAt: isoFromInput(publishedAt),
-        status: nextStatus || status,
+        status: resolvedStatus,
       });
-      setStatus(nextStatus || status);
+      setStatus(resolvedStatus);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Unable to save the article.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm font-medium">
-          Title
-          <input className="mt-1 w-full border border-neutral-300 bg-white px-3 py-2 text-base outline-none focus:border-neutral-950" value={title} onChange={(event) => setTitle(event.target.value)} />
+    <div className="article-editor">
+      <div className="article-editor-intro">
+        <div><p className="eyebrow">{mode === "create" ? "Create article" : "Article details"}</p><h2>{mode === "create" ? "Start with the essentials." : "Update the article."}</h2></div>
+        <span className={`article-status article-status-${status}`}>{status}</span>
+      </div>
+
+      <div className="editor-fields-grid">
+        <label className="editor-field editor-field-wide">
+          <span>Title</span>
+          <input value={title} placeholder="A clear, specific article title" onChange={(event) => setTitle(event.target.value)} />
         </label>
-        <label className="text-sm font-medium">
-          Slug
-          <input className="mt-1 w-full border border-neutral-300 bg-white px-3 py-2 text-base outline-none focus:border-neutral-950" value={computedSlug} onChange={(event) => setSlug(slugify(event.target.value))} />
+
+        <label className="editor-field editor-field-wide">
+          <span className="editor-label-row"><span>Slug</span><small>{automaticSlug ? "Generated from the title" : "Custom slug"}</small></span>
+          <div className="slug-field">
+            <span>/article/</span>
+            <input value={computedSlug} placeholder="generated-from-the-title" onChange={(event) => setCustomSlugValue(event.target.value)} />
+            {!automaticSlug ? <button type="button" title="Reset to automatic slug" onClick={resetSlug}><RotateCcw size={15} /></button> : null}
+          </div>
+        </label>
+
+        <label className="editor-field editor-field-wide">
+          <span className="editor-label-row"><span>Summary</span><small>{summary.length}/500</small></span>
+          <textarea maxLength={500} value={summary} placeholder="A concise description used on article cards and in search results." onChange={(event) => setSummary(event.target.value)} />
+        </label>
+
+        <label className="editor-field">
+          <span>Publication date</span>
+          <input type="date" value={publishedAt} onChange={(event) => setPublishedAt(event.target.value)} />
+        </label>
+
+        <label className="editor-field">
+          <span>Status</span>
+          <select value={status} onChange={(event) => setStatus(event.target.value as "draft" | "published")}>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+          </select>
         </label>
       </div>
-      <label className="block text-sm font-medium">
-        Summary
-        <textarea className="mt-1 min-h-20 w-full border border-neutral-300 bg-white px-3 py-2 text-base outline-none focus:border-neutral-950" value={summary} onChange={(event) => setSummary(event.target.value)} />
-      </label>
-      <div className="flex flex-wrap items-center gap-2 border border-neutral-200 bg-white p-2">
-        <button type="button" title="Heading" className="border border-neutral-200 p-2 hover:bg-neutral-100" onClick={() => insertToken("\n## ")}>
-          <Heading1 size={18} />
-        </button>
-        <button type="button" title="Bold" className="border border-neutral-200 p-2 hover:bg-neutral-100" onClick={() => insertToken("**", "**")}>
-          <Bold size={18} />
-        </button>
-        <button type="button" title="Italic" className="border border-neutral-200 p-2 hover:bg-neutral-100" onClick={() => insertToken("_", "_")}>
-          <Italic size={18} />
-        </button>
-        <button type="button" title="HTML embed" className="border border-neutral-200 p-2 hover:bg-neutral-100" onClick={() => insertToken("\n<div>\n", "\n</div>\n")}>
-          <Code2 size={18} />
-        </button>
+
+      <div className="editor-content-heading">
+        <div><p className="eyebrow">Article content</p><h2>Write and preview together.</h2></div>
+        <div className="editor-toolbar" aria-label="Markdown formatting">
+          <button type="button" title="Heading" onClick={() => insertToken("\n## ")}><Heading1 size={17} /></button>
+          <button type="button" title="Bold" onClick={() => insertToken("**", "**")}><Bold size={17} /></button>
+          <button type="button" title="Italic" onClick={() => insertToken("_", "_")}><Italic size={17} /></button>
+          <button type="button" title="Link" onClick={() => insertToken("[", "](https://)")}><Link2 size={17} /></button>
+          <button type="button" title="List" onClick={() => insertToken("\n- ")}><List size={17} /></button>
+          <button type="button" title="Quote" onClick={() => insertToken("\n> ")}><Quote size={17} /></button>
+          <button type="button" title="HTML embed" onClick={() => insertToken("\n<div>\n", "\n</div>\n")}><Code2 size={17} /></button>
+        </div>
       </div>
-      <label className="block text-sm font-medium">
-        Body
-        <textarea id="bodyMarkdown" className="mt-1 min-h-[360px] w-full border border-neutral-300 bg-white px-3 py-2 font-mono text-sm leading-6 outline-none focus:border-neutral-950" value={bodyMarkdown} onChange={(event) => setBodyMarkdown(event.target.value)} />
-      </label>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="text-sm font-medium">
-          Date
-          <input type="date" className="ml-3 border border-neutral-300 bg-white px-3 py-2 outline-none focus:border-neutral-950" value={publishedAt} onChange={(event) => setPublishedAt(event.target.value)} />
+
+      <div className="editor-content-grid">
+        <label className="editor-panel">
+          <span>Markdown</span>
+          <textarea id="bodyMarkdown" value={bodyMarkdown} placeholder="Start writing in Markdown…" onChange={(event) => setBodyMarkdown(event.target.value)} />
         </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={status === "published"} onChange={(event) => setStatus(event.target.checked ? "published" : "draft")} />
-          Published
-        </label>
-        <div className="flex gap-2">
-          <button type="button" className="inline-flex items-center gap-2 border border-neutral-300 bg-white px-3 py-2 text-sm hover:bg-neutral-100 disabled:opacity-50" disabled={saving} onClick={() => submit("draft")}>
-            <Save size={16} /> Save
-          </button>
-          <button type="button" className="inline-flex items-center gap-2 bg-neutral-950 px-3 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50" disabled={saving} onClick={() => submit("published")}>
-            <Send size={16} /> Publish
-          </button>
+        <div className="editor-panel">
+          <span>Live preview</span>
+          <div className="article-editor-preview">
+            {bodyMarkdown ? <MarkdownContent markdown={bodyMarkdown} /> : <div className="editor-preview-empty"><FilePreviewIcon /><p>Your formatted article will appear here.</p></div>}
+          </div>
+        </div>
+      </div>
+
+      {formError ? <div className="admin-error editor-error">{formError}</div> : null}
+
+      <div className="editor-actions">
+        <button type="button" className="button button-outline" disabled={saving} onClick={onCancel}>Cancel</button>
+        <div>
+          <button type="button" className="button button-outline" disabled={saving || !canSubmit} onClick={() => submit("draft")}><Save size={16} /> Save draft</button>
+          <button type="button" className="button button-dark" disabled={saving || !canSubmit} onClick={() => submit("published")}><Send size={16} /> {saving ? "Saving…" : "Publish"}</button>
         </div>
       </div>
     </div>
   );
 }
 
+function FilePreviewIcon() {
+  return <Code2 size={24} />;
+}

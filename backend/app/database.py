@@ -22,6 +22,11 @@ async def ensureIndexes() -> None:
     database = getDatabase()
     await database.articles.create_index("slug", unique=True)
     await database.articles.create_index([("status", 1), ("publishedAt", -1)])
+    await database.articleViews.create_index(
+        [("articleSlug", 1), ("ipHash", 1), ("hourBucket", 1)],
+        unique=True,
+        name="unique_article_ip_hour",
+    )
     await database.adminSessions.create_index("tokenHash", unique=True)
     await database.adminSessions.create_index("expiresAt", expireAfterSeconds=0)
 
@@ -31,4 +36,3 @@ async def closeClient() -> None:
     if client is not None:
         client.close()
         client = None
-

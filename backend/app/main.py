@@ -7,11 +7,12 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.errors import DuplicateKeyError
 
 from .config import getSettings
 from .database import closeClient, ensureIndexes, getDatabase
 from .schemas import ArticleCreate, ArticleOut, ArticleSummary, ArticleUpdate, PinInput
-from .security import assertAllowedIp, createSession, getClientIp, hashPin, isAllowedIp, requireAdmin, tokenHash, verifyPin
+from .security import assertAllowedIp, createSession, getClientIp, hashPin, isAllowedIp, requireAdmin, tokenHash, verifyPin, viewIpHash
 
 
 def slugify(value: str) -> str:
@@ -105,6 +106,43 @@ async def getArticle(slug: str, database: AsyncIOMotorDatabase = Depends(databas
     return serializeArticle(article)
 
 
+@app.get("/api/articles/{slug}/views")
+async def getArticleViews(slug: str, database: AsyncIOMotorDatabase = Depends(database)) -> dict[str, int]:
+    article = await database.articles.find_one({"slug": slug, "status": "published"}, {"_id": 1})
+    if not article:
+        raise HTTPException(status_code=404, detail="article not found")
+    return {"views": await database.articleViews.count_documents({"articleSlug": slug})}
+
+
+@app.post("/api/articles/{slug}/views")
+async def recordArticleView(request: Request, slug: str, database: AsyncIOMotorDatabase = Depends(database)) -> dict[str, int | bool]:
+    article = await database.articles.find_one({"slug": slug, "status": "published"}, {"_id": 1})
+    if not article:
+        raise HTTPException(status_code=404, detail="article not found")
+
+    now = datetime.now(UTC)
+    hourBucket = now.replace(minute=0, second=0, microsecond=0)
+    viewKey = {
+        "articleSlug": slug,
+        "ipHash": viewIpHash(getClientIp(request)),
+        "hourBucket": hourBucket,
+    }
+    counted = False
+    try:
+        result = await database.articleViews.update_one(
+            viewKey,
+            {"$setOnInsert": {**viewKey, "createdAt": now}},
+            upsert=True,
+        )
+        counted = result.upserted_id is not None
+    except DuplicateKeyError:
+        # Concurrent requests for the same visitor/hour resolve to one view.
+        counted = False
+
+    views = await database.articleViews.count_documents({"articleSlug": slug})
+    return {"views": views, "counted": counted}
+
+
 @app.get("/api/sitemap")
 async def sitemap(database: AsyncIOMotorDatabase = Depends(database)) -> dict[str, list[str]]:
     siteUrl = str(settings["publicSiteUrl"])
@@ -112,7 +150,6 @@ async def sitemap(database: AsyncIOMotorDatabase = Depends(database)) -> dict[st
         "",
         "/articles",
         "/background-and-experience",
-        "/machine-learning",
         "/software-engineers-guide-exploring-oman-top-travel-tips-itinerary",
     ]
     cursor = database.articles.find({"status": "published"}, {"slug": 1}).sort("publishedAt", -1)
@@ -207,5 +244,7 @@ async def updateArticle(slug: str, payload: ArticleUpdate, database: AsyncIOMoto
     update["updatedAt"] = datetime.now(UTC)
     await database.articles.update_one({"_id": existing["_id"]}, {"$set": update})
     updatedSlug = update.get("slug", slug)
+    if updatedSlug != slug:
+        await database.articleViews.update_many({"articleSlug": slug}, {"$set": {"articleSlug": updatedSlug}})
     article = await database.articles.find_one({"slug": updatedSlug})
     return serializeArticle(article)

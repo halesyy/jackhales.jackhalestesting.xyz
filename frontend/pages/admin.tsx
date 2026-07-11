@@ -1,11 +1,14 @@
-import { LogOut, Plus } from "lucide-react";
+import { ArrowLeft, Clock3, FilePenLine, Files, FileText, LogOut, Plus } from "lucide-react";
 import Head from "next/head";
 import { useEffect, useState } from "react";
 
 import { ArticleForm, type articlePayload } from "../components/ArticleForm";
 import { SiteShell } from "../components/SiteShell";
 import { adminFetch } from "../lib/api";
+import { formatDate } from "../lib/date";
 import type { adminStatus, articleDetail, articleSummary } from "../lib/types";
+
+type adminView = "library" | "new" | "edit";
 
 export default function AdminPage() {
   const [status, setStatus] = useState<adminStatus | null>(null);
@@ -13,11 +16,9 @@ export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [articles, setArticles] = useState<articleSummary[]>([]);
   const [editing, setEditing] = useState<articleDetail | undefined>();
+  const [view, setView] = useState<adminView>("library");
   const [message, setMessage] = useState("");
-
-  async function loadStatus() {
-    setStatus(await adminFetch<adminStatus>("/admin/status"));
-  }
+  const [loadingArticle, setLoadingArticle] = useState(false);
 
   async function loadArticles() {
     const nextArticles = await adminFetch<articleSummary[]>("/admin/articles");
@@ -26,30 +27,79 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    loadStatus().catch(() => setStatus({ hasPin: true, allowedIp: false }));
+    let active = true;
+
+    async function restoreAdmin() {
+      try {
+        const nextStatus = await adminFetch<adminStatus>("/admin/status");
+        if (!active) return;
+        setStatus(nextStatus);
+
+        if (nextStatus.allowedIp && nextStatus.hasPin) {
+          try {
+            const nextArticles = await adminFetch<articleSummary[]>("/admin/articles");
+            if (!active) return;
+            setArticles(nextArticles);
+            setLoggedIn(true);
+          } catch {
+            // A PIN exists but the browser has no active session yet.
+          }
+        }
+      } catch {
+        if (active) setStatus({ hasPin: true, allowedIp: false });
+      }
+    }
+
+    restoreAdmin();
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function submitPin() {
     const endpoint = status?.hasPin ? "/admin/login" : "/admin/bootstrap";
     await adminFetch(endpoint, { method: "POST", body: JSON.stringify({ pin }) });
     setMessage("");
-    await loadStatus();
+    setPin("");
     await loadArticles();
+    setView("library");
   }
 
   async function editArticle(slug: string) {
-    setEditing(await adminFetch<articleDetail>(`/admin/articles/${slug}`));
+    setLoadingArticle(true);
+    setMessage("");
+    try {
+      const article = await adminFetch<articleDetail>(`/admin/articles/${slug}`);
+      setEditing(article);
+      setView("edit");
+    } finally {
+      setLoadingArticle(false);
+    }
+  }
+
+  function newArticle() {
+    setEditing(undefined);
+    setMessage("");
+    setView("new");
+  }
+
+  function showLibrary() {
+    setEditing(undefined);
+    setMessage("");
+    setView("library");
   }
 
   async function saveArticle(payload: articlePayload) {
-    if (editing) {
+    if (view === "edit" && editing) {
       const saved = await adminFetch<articleDetail>(`/admin/articles/${editing.slug}`, { method: "PUT", body: JSON.stringify(payload) });
       setEditing(saved);
+      setMessage(saved.status === "published" ? "Published article updated." : "Draft updated.");
     } else {
       const saved = await adminFetch<articleDetail>("/admin/articles", { method: "POST", body: JSON.stringify(payload) });
       setEditing(saved);
+      setView("edit");
+      setMessage(saved.status === "published" ? "Article published." : "Draft created.");
     }
-    setMessage("Saved");
     await loadArticles();
   }
 
@@ -57,12 +107,14 @@ export default function AdminPage() {
     await adminFetch("/admin/logout", { method: "POST" });
     setLoggedIn(false);
     setArticles([]);
+    setEditing(undefined);
+    setView("library");
   }
 
   if (!status) {
     return (
       <SiteShell>
-        <div className="text-sm text-neutral-500">Loading</div>
+        <div className="admin-loading card"><span /> Connecting to the publishing workspace…</div>
       </SiteShell>
     );
   }
@@ -70,10 +122,8 @@ export default function AdminPage() {
   if (!status.allowedIp) {
     return (
       <SiteShell>
-        <Head>
-          <title>Admin - Jack Hales</title>
-        </Head>
-        <div className="border border-neutral-200 bg-white p-5 text-sm text-neutral-700">Admin is not available from this IP.</div>
+        <Head><title>Admin — Jack Hales</title></Head>
+        <div className="card p-6 text-sm text-neutral-700">Admin is not available from this IP.</div>
       </SiteShell>
     );
   }
@@ -81,52 +131,80 @@ export default function AdminPage() {
   if (!loggedIn) {
     return (
       <SiteShell>
-        <Head>
-          <title>Admin - Jack Hales</title>
-        </Head>
-        <div className="mx-auto max-w-sm border border-neutral-200 bg-white p-5">
-          <h1 className="text-xl font-semibold">{status.hasPin ? "Admin" : "Create PIN"}</h1>
-          <input type="password" className="mt-4 w-full border border-neutral-300 px-3 py-2 outline-none focus:border-neutral-950" value={pin} onChange={(event) => setPin(event.target.value)} />
-          <button className="mt-3 w-full bg-neutral-950 px-3 py-2 text-white hover:bg-neutral-800" onClick={() => submitPin().catch((error) => setMessage(error.message))}>
-            {status.hasPin ? "Unlock" : "Save PIN"}
+        <Head><title>Admin — Jack Hales</title></Head>
+        <div className="admin-login card">
+          <span className="icon-tile icon-blue"><FilePenLine size={21} /></span>
+          <p className="eyebrow">Publishing workspace</p>
+          <h1>{status.hasPin ? "Welcome back." : "Create your editor PIN."}</h1>
+          <p>{status.hasPin ? "Enter your PIN to manage articles and drafts." : "Use at least six characters. This PIN protects the article editor."}</p>
+          <label>
+            <span>PIN</span>
+            <input type="password" autoComplete="current-password" value={pin} onChange={(event) => setPin(event.target.value)} onKeyDown={(event) => event.key === "Enter" && submitPin().catch((error) => setMessage(error.message))} />
+          </label>
+          <button className="button button-dark" disabled={pin.length < 6} onClick={() => submitPin().catch((error) => setMessage(error.message))}>
+            {status.hasPin ? "Open workspace" : "Save PIN"}
           </button>
-          {message ? <p className="mt-3 text-sm text-red-700">{message}</p> : null}
+          {message ? <p className="admin-error">{message}</p> : null}
         </div>
       </SiteShell>
     );
   }
 
+  const publishedCount = articles.filter((article) => article.status === "published").length;
+  const draftCount = articles.length - publishedCount;
+
   return (
     <SiteShell>
-      <Head>
-        <title>Admin - Jack Hales</title>
-      </Head>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Articles</h1>
-        <div className="flex gap-2">
-          <button className="inline-flex items-center gap-2 border border-neutral-300 bg-white px-3 py-2 text-sm hover:bg-neutral-100" onClick={() => setEditing(undefined)}>
-            <Plus size={16} /> New
-          </button>
-          <button className="inline-flex items-center gap-2 border border-neutral-300 bg-white px-3 py-2 text-sm hover:bg-neutral-100" onClick={logout}>
-            <LogOut size={16} /> Logout
-          </button>
-        </div>
-      </div>
-      <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-        <aside className="space-y-2">
-          {articles.map((article) => (
-            <button key={article.slug} className="block w-full border border-neutral-200 bg-white px-3 py-2 text-left text-sm hover:border-neutral-950" onClick={() => editArticle(article.slug)}>
-              <span className="block font-medium">{article.title}</span>
-              <span className="text-xs text-neutral-500">{article.status}</span>
-            </button>
-          ))}
-        </aside>
-        <section className="border border-neutral-200 bg-white p-4">
-          {message ? <div className="mb-4 text-sm text-green-700">{message}</div> : null}
-          <ArticleForm key={editing?.slug || "new"} article={editing} onSubmit={saveArticle} />
-        </section>
-      </div>
+      <Head><title>Publishing workspace — Jack Hales</title></Head>
+
+      <section className="admin-workspace">
+        <header className="admin-heading">
+          <div>
+            <p className="eyebrow">Publishing workspace</p>
+            <h1>{view === "library" ? "Article library" : view === "new" ? "New article" : "Edit article"}</h1>
+            <p>{view === "library" ? "Review published work, continue a draft or start something new." : view === "new" ? "Start with a title—the slug will follow automatically." : `Updating ${editing?.title || "article"}.`}</p>
+          </div>
+          <div className="admin-heading-actions">
+            {view === "library" ? (
+              <button className="button button-dark" onClick={newArticle}><Plus size={16} /> New article</button>
+            ) : (
+              <button className="button button-outline" onClick={showLibrary}><ArrowLeft size={16} /> Article library</button>
+            )}
+            <button className="button button-outline" onClick={logout}><LogOut size={16} /> Logout</button>
+          </div>
+        </header>
+
+        {view === "library" ? (
+          <>
+            <div className="admin-stats">
+              <div className="admin-stat card"><span className="icon-tile icon-blue"><Files size={19} /></span><div><strong>{articles.length}</strong><small>Total articles</small></div></div>
+              <div className="admin-stat card"><span className="icon-tile icon-mint"><FileText size={19} /></span><div><strong>{publishedCount}</strong><small>Published</small></div></div>
+              <div className="admin-stat card"><span className="icon-tile icon-peach"><FilePenLine size={19} /></span><div><strong>{draftCount}</strong><small>Drafts</small></div></div>
+            </div>
+
+            <div className="article-library card">
+              <div className="article-library-heading"><div><h2>All articles</h2><p>Newest publication date first</p></div><span>{loadingArticle ? "Opening article…" : `${articles.length} entries`}</span></div>
+              <div className="article-library-list">
+                {articles.map((article) => (
+                  <button key={article.slug} className="admin-article-row" disabled={loadingArticle} onClick={() => editArticle(article.slug).catch((error) => setMessage(error.message))}>
+                    <span className={`article-status article-status-${article.status}`}>{article.status}</span>
+                    <span className="admin-article-main"><strong>{article.title}</strong><small>{article.summary || "No summary yet."}</small></span>
+                    <span className="admin-article-date"><Clock3 size={13} /> {formatDate(article.publishedAt)}</span>
+                    <span className="admin-edit-label">Edit <FilePenLine size={14} /></span>
+                  </button>
+                ))}
+                {!articles.length ? <div className="admin-empty"><FileText size={24} /><p>No articles yet.</p><button className="button button-dark" onClick={newArticle}>Create the first article</button></div> : null}
+              </div>
+            </div>
+            {message ? <div className="admin-toast">{message}</div> : null}
+          </>
+        ) : (
+          <div className="article-editor-shell card">
+            {message ? <div className="admin-success">{message}</div> : null}
+            <ArticleForm key={editing?.id || "new"} article={editing} mode={view === "new" ? "create" : "edit"} onSubmit={saveArticle} onCancel={showLibrary} />
+          </div>
+        )}
+      </section>
     </SiteShell>
   );
 }
-

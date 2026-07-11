@@ -21,3 +21,7 @@ export type adminStatus = {
   allowedIp: boolean;
 };
 
+export type articleViewCount = {
+  views: number;
+  counted?: boolean;
+};

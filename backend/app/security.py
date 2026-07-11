@@ -55,6 +55,12 @@ def tokenHash(token: str) -> str:
     return hmac.new(secret, token.encode(), hashlib.sha256).hexdigest()
 
 
+def viewIpHash(ip: str) -> str:
+    settings = getSettings()
+    secret = str(settings["sessionSecret"]).encode()
+    return hmac.new(secret, f"article-view:{ip}".encode(), hashlib.sha256).hexdigest()
+
+
 async def createSession(database: AsyncIOMotorDatabase, request: Request) -> str:
     token = secrets.token_urlsafe(48)
     now = datetime.now(UTC)

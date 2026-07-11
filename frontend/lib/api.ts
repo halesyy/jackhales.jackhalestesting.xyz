@@ -1,4 +1,4 @@
-import type { articleDetail, articleSummary } from "./types";
+import type { articleDetail, articleSummary, articleViewCount } from "./types";
 
 export function apiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -24,6 +24,14 @@ export async function fetchArticle(slug: string): Promise<articleDetail> {
   return parseJson<articleDetail>(response);
 }
 
+export async function recordArticleView(slug: string): Promise<articleViewCount> {
+  const response = await fetch(`${apiBaseUrl()}/articles/${encodeURIComponent(slug)}/views`, {
+    method: "POST",
+    credentials: "include",
+  });
+  return parseJson<articleViewCount>(response);
+}
+
 export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl()}${path}`, {
     credentials: "include",
@@ -32,4 +40,3 @@ export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T
   });
   return parseJson<T>(response);
 }
-
