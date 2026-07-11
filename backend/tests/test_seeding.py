@@ -1,7 +1,9 @@
 import unittest
 from datetime import UTC, datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from app.seeding import loadSeedArticles, reseedArticles
+from app.seeding import loadReseedToken, loadSeedArticles, reseedArticles
 
 
 class FakeDeleteResult:
@@ -45,6 +47,16 @@ class SeedArticlesTest(unittest.TestCase):
         self.assertTrue(all(article["createdAt"] == seededAt for article in articles))
         self.assertTrue(all(article["updatedAt"] == seededAt for article in articles))
         self.assertTrue(all(article["publishedAt"].tzinfo is not None for article in articles))
+
+    def testReseedTokenIsValidated(self) -> None:
+        with TemporaryDirectory() as directory:
+            tokenPath = Path(directory) / "reseed.once"
+            tokenPath.write_text("20260711-canonical-articles-v1\n")
+            self.assertEqual(loadReseedToken(tokenPath), "20260711-canonical-articles-v1")
+
+            tokenPath.write_text("../../unsafe")
+            with self.assertRaises(ValueError):
+                loadReseedToken(tokenPath)
 
 
 class ReseedArticlesTest(unittest.IsolatedAsyncioTestCase):

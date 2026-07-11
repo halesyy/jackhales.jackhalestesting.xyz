@@ -1,20 +1,11 @@
 import argparse
 import asyncio
 import json
-from typing import Any
 
 from bson import json_util
 
 from .database import closeClient, ensureIndexes, getDatabase
-from .seeding import reseedArticles
-
-
-async def backupCollections(database: Any) -> dict[str, list[dict[str, Any]]]:
-    backup: dict[str, list[dict[str, Any]]] = {}
-    for collectionName in ("articles", "articleViews", "adminSessions"):
-        collection = database[collectionName]
-        backup[collectionName] = [document async for document in collection.find({})]
-    return backup
+from .seeding import backupCollections, reseedArticles
 
 
 async def run(command: str) -> None:

@@ -1,10 +1,12 @@
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 
 seedPath = Path(__file__).resolve().parent.parent / "seed" / "articles.json"
+reseedTokenPath = Path(__file__).resolve().parent.parent / "seed" / "reseed.once"
 
 
 def loadSeedArticles(now: datetime | None = None) -> list[dict[str, Any]]:
@@ -42,3 +44,53 @@ async def reseedArticles(database: Any) -> dict[str, int]:
         "articleViewsDeleted": viewResult.deleted_count,
         "adminSessionsDeleted": sessionResult.deleted_count,
     }
+
+
+def loadReseedToken(path: Path = reseedTokenPath) -> str | None:
+    if not path.exists():
+        return None
+    token = path.read_text().strip()
+    if not re.fullmatch(r"[a-zA-Z0-9._-]+", token):
+        raise ValueError("Invalid reseed token")
+    return token
+
+
+async def backupCollections(database: Any) -> dict[str, list[dict[str, Any]]]:
+    backup: dict[str, list[dict[str, Any]]] = {}
+    for collectionName in ("articles", "articleViews", "adminSessions"):
+        collection = database[collectionName]
+        backup[collectionName] = [document async for document in collection.find({})]
+    return backup
+
+
+async def applyPendingReseed(database: Any) -> dict[str, int] | None:
+    token = loadReseedToken()
+    if token is None:
+        return None
+
+    operationId = f"articles:{token}"
+    completedRun = await database.maintenanceRuns.find_one({"_id": operationId, "status": "completed"})
+    if completedRun:
+        return completedRun.get("summary")
+
+    existingBackup = await database.maintenanceBackups.find_one({"_id": operationId}, {"_id": 1})
+    if existingBackup is None:
+        await database.maintenanceBackups.insert_one(
+            {
+                "_id": operationId,
+                "createdAt": datetime.now(UTC),
+                "collections": await backupCollections(database),
+            }
+        )
+
+    await database.maintenanceRuns.update_one(
+        {"_id": operationId},
+        {"$setOnInsert": {"startedAt": datetime.now(UTC)}, "$set": {"status": "running"}},
+        upsert=True,
+    )
+    summary = await reseedArticles(database)
+    await database.maintenanceRuns.update_one(
+        {"_id": operationId},
+        {"$set": {"status": "completed", "completedAt": datetime.now(UTC), "summary": summary}},
+    )
+    return summary

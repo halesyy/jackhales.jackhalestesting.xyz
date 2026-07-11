@@ -11,7 +11,7 @@ from .config import getSettings
 from .database import closeClient, ensureIndexes, getDatabase
 from .schemas import ArticleCreate, ArticleOut, ArticleSummary, ArticleUpdate, PinInput
 from .security import assertAllowedIp, createSession, getClientIp, hashPin, isAllowedIp, requireAdmin, tokenHash, verifyPin, viewIpHash
-from .seeding import seedArticles
+from .seeding import applyPendingReseed, seedArticles
 
 
 def slugify(value: str) -> str:
@@ -44,6 +44,7 @@ def serializeSummary(document: dict) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await applyPendingReseed(getDatabase())
     await ensureIndexes()
     await seedArticles(getDatabase())
     yield
