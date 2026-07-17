@@ -22,7 +22,7 @@ from .security import (
     verifyPassword,
     viewIpHash,
 )
-from .seeding import applyPendingReseed, seedArticles
+from .seeding import applyPendingReseed, seedArticles, syncVersionedSeedArticles
 from .sitemap import buildSitemap
 
 
@@ -60,6 +60,7 @@ async def lifespan(app: FastAPI):
     await applyPendingAuthMigration(getDatabase())
     await ensureIndexes()
     await seedArticles(getDatabase())
+    await syncVersionedSeedArticles(getDatabase())
     yield
     await closeClient()
 

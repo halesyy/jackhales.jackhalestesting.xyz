@@ -82,7 +82,7 @@ export default function ArticlePage({ article }: articlePageProps) {
         </div>
       </Reveal>
 
-      <Reveal className="article-paper card" delay={0.1}>
+      <Reveal className="article-paper card" delay={0.1} viewportAmount="some">
         <MarkdownContent markdown={article.bodyMarkdown} />
       </Reveal>
     </SiteShell>
