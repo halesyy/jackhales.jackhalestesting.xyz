@@ -21,7 +21,7 @@ export default function OmanPage() {
         <h1>A software engineer&apos;s guide to exploring Oman.</h1>
         <p className="article-deck">A practical three-day itinerary through Muscat, Nizwa and the mountains—with the places, people and small details that made the trip memorable.</p>
       </Reveal>
-      <Reveal className="article-paper card" delay={0.1}>
+      <Reveal className="article-paper card" delay={0.1} viewportAmount="some">
         <MarkdownContent markdown={markdown} />
         <InstagramEmbed postUrl="https://www.instagram.com/p/C8eQVlTgaS_/" title="Jack Hales with Oman Tours" />
       </Reveal>

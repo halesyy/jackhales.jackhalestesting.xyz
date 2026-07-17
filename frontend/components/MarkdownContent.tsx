@@ -22,6 +22,9 @@ const components: Components = {
       </a>
     );
   },
+  img: ({ alt, ...props }) => (
+    <img alt={alt || ""} loading="lazy" decoding="async" {...props} />
+  ),
 };
 
 export function MarkdownContent({ markdown }: markdownContentProps) {

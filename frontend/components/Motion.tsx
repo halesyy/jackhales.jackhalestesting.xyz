@@ -5,9 +5,10 @@ type motionProps = {
   children: ReactNode;
   className?: string;
   delay?: number;
+  viewportAmount?: "some" | "all" | number;
 };
 
-export function Reveal({ children, className, delay = 0 }: motionProps) {
+export function Reveal({ children, className, delay = 0, viewportAmount = 0.12 }: motionProps) {
   const reduceMotion = useReducedMotion();
 
   return (
@@ -15,7 +16,7 @@ export function Reveal({ children, className, delay = 0 }: motionProps) {
       className={className}
       initial={reduceMotion ? false : { opacity: 0, y: 20 }}
       whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.12 }}
+      viewport={{ once: true, amount: viewportAmount }}
       transition={{ duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] }}
     >
       {children}
